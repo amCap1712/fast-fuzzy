@@ -5,7 +5,7 @@ import os
 import datetime
 import logging
 from asyncio import as_completed
-from concurrent.futures import ThreadPoolExecutor, Future
+from concurrent.futures import ThreadPoolExecutor, Future, ProcessPoolExecutor
 from math import fabs
 from time import time, monotonic, sleep
 import threading
@@ -143,7 +143,7 @@ class MappingLookup:
 
         # Read from CSV file, since no sort, faster to iterate
         with open('canonical_musicbrainz_data.csv', newline='') as csvfile, \
-                ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
+                ProcessPoolExecutor(max_workers=MAX_THREADS) as executor:
             reader = csv.reader(csvfile)
 
             recording_data = []
@@ -173,11 +173,13 @@ class MappingLookup:
                 if i and i % CHUNK_SIZE == 0:
                     future = executor.submit(build_index, thread_data)
                     futures.append(future)
+                    thread_data = []
 
             for future in as_completed(futures):
                 results = future.result()
                 for ac_id, index in results:
                     self.recording_indexes[ac_id] = index
+                futures.remove(future)
 
         # TODO: save last generated chunk
 
