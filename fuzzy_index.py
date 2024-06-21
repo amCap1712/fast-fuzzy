@@ -1,20 +1,14 @@
 #!/usr/bin/env python3
 
 import csv
-import os
-import datetime
 import logging
-from asyncio import as_completed
-from concurrent.futures import ThreadPoolExecutor, Future, ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from math import fabs
-from time import time, monotonic, sleep
-import threading
+from time import monotonic
 from queue import Queue
 import re
-import sys
 
 import psycopg2
-from psycopg2.extras import DictCursor, execute_values
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 from unidecode import unidecode
@@ -138,7 +132,7 @@ class MappingLookup:
         last_artist_credit_id = -1
         last_row = None
 
-        futures = []
+        futures = set()
         thread_data = []
 
         # Read from CSV file, since no sort, faster to iterate
@@ -172,7 +166,7 @@ class MappingLookup:
 
                 if i and i % CHUNK_SIZE == 0:
                     future = executor.submit(build_index, thread_data)
-                    futures.append(future)
+                    futures.add(future)
                     thread_data = []
 
             for future in as_completed(futures):
