@@ -100,7 +100,6 @@ class FuzzyIndex:
 def build_index(thread_data):
     rows = 0
     t0 = monotonic()
-    recording_data = []
     results = []
     for artist_credit_id, recording_data in thread_data:
         recording_index = FuzzyIndex()
@@ -109,7 +108,7 @@ def build_index(thread_data):
             rows += len(recording_data)
             results.append((artist_credit_id, recording_index))
     t1 = monotonic()
-    print("Indexed %d rows in %.2fs" % (rows, (t1-t0) / len(recording_data)))
+    print("Indexed %d rows in %.2fs" % (rows, (t1-t0)))
     return results
 
 
