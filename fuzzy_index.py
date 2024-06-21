@@ -2,7 +2,7 @@
 
 import csv
 import logging
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from math import fabs
 from time import monotonic
 from queue import Queue
@@ -122,12 +122,6 @@ class MappingLookup:
         self.return_value_queue = Queue()
 
     def create_indexes(self, conn):
-
-        # TODO: VA and more complex artist credits probably not handled correctly
-
-        self.artist_index = FuzzyIndex()
-        self.recording_indexes = {}
-
         t0 = monotonic()
         last_artist_credit_id = -1
         last_row = None
@@ -135,9 +129,11 @@ class MappingLookup:
         futures = set()
         thread_data = []
 
+        self.recording_indexes = {}
+
         # Read from CSV file, since no sort, faster to iterate
         with open('canonical_musicbrainz_data.csv', newline='') as csvfile, \
-                ProcessPoolExecutor(max_workers=MAX_THREADS) as executor:
+                ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
             reader = csv.reader(csvfile)
 
             recording_data = []
@@ -176,7 +172,9 @@ class MappingLookup:
                 futures.remove(future)
 
         # TODO: save last generated chunk
+        # TODO: VA and more complex artist credits probably not handled correctly
 
+        self.artist_index = FuzzyIndex()
         self.artist_index.build(self.artist_data.values())
         t1 = monotonic()
         print("built indexes in %.1f seconds." % (t1 - t0))
