@@ -4,6 +4,8 @@ import csv
 import os
 import datetime
 import logging
+from asyncio import as_completed
+from concurrent.futures import ThreadPoolExecutor, Future
 from math import fabs
 from time import time, monotonic, sleep
 import threading
@@ -88,7 +90,7 @@ class FuzzyIndex:
             Return IDs for the matches in a list. Returns a list of dicts with keys of lookup_string, confidence and recording_id.
         """
         if not self.have_nmslib:
-            logger.warn("nmslib not installed and trying fuzzy search, but nothing will match. Install nmslib!")
+            logger.warning("nmslib not installed and trying fuzzy search, but nothing will match. Install nmslib!")
             return []
 
         query_matrix = self.vectorizer.transform([query_string])
@@ -101,18 +103,20 @@ class FuzzyIndex:
 
         return output
 
-def build_index(thread_data, return_val_queue):
+def build_index(thread_data):
     rows = 0
     t0 = monotonic()
+    recording_data = []
+    results = []
     for artist_credit_id, recording_data in thread_data:
         recording_index = FuzzyIndex()
         if len(recording_data) > 0:
             recording_index.build(recording_data)
             rows += len(recording_data)
-        return_val_queue.put((artist_credit_id, recording_index))
-
+            results.append((artist_credit_id, recording_index))
     t1 = monotonic()
     print("Indexed %d rows in %.2fs" % (rows, (t1-t0) / len(recording_data)))
+    return results
 
 
 MAX_THREADS = 8
@@ -134,14 +138,14 @@ class MappingLookup:
         last_artist_credit_id = -1
         last_row = None
 
-        threads = []
+        futures = []
         thread_data = []
 
         # Read from CSV file, since no sort, faster to iterate
-        with open('canonical_musicbrainz_data.csv', newline='') as csvfile:
+        with open('canonical_musicbrainz_data.csv', newline='') as csvfile, \
+                ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
             reader = csv.reader(csvfile)
 
-            t0_chunk = 0.0
             recording_data = []
             for i, csv_row in enumerate(reader):
                 if i == 0:
@@ -154,7 +158,7 @@ class MappingLookup:
                         "recording_name": csv_row[7]
                       }
 
-                if last_artist_credit_id >= 0 and row["artist_credit_id"] != last_artist_credit_id:
+                if 0 <= last_artist_credit_id != row["artist_credit_id"]:
                     thread_data.append((last_artist_credit_id, recording_data))
                     recording_data = []
                     self.artist_data[last_row["artist_credit_id"]] = (FuzzyIndex.encode_string(last_row["artist_credit_name"]),
@@ -167,34 +171,15 @@ class MappingLookup:
                 last_artist_credit_id = row["artist_credit_id"]
 
                 if i and i % CHUNK_SIZE == 0:
-                    while True:
-                        # Collect the returned values and store them
-                        while not self.return_value_queue.empty():
-                            ac_id, index = self.return_value_queue.get()
-                            self.recording_indexes[ac_id] = index
+                    future = executor.submit(build_index, thread_data)
+                    futures.append(future)
 
-                        # Now clean up dead threads
-                        for thread in threads:
-                            if not thread.is_alive():
-                                thread.join(.01)
-                                threads.remove(thread)
-                                continue
+            for future in as_completed(futures):
+                results = future.result()
+                for ac_id, index in results:
+                    self.recording_indexes[ac_id] = index
 
-                        if len(threads) == MAX_THREADS:
-                            sleep(1)
-                            continue
-
-                        # Start a new thread
-                        thread = threading.Thread(target=build_index, args=(thread_data, self.return_value_queue))
-                        thread.start()
-                        thread_data = []
-                        threads.append(thread)
-                        break
-
-                    print("%d threads running" % len(threads))
-
-
-        #TODO: save last generated chunk
+        # TODO: save last generated chunk
 
         self.artist_index.build(self.artist_data.values())
         t1 = monotonic()
