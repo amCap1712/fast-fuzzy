@@ -214,7 +214,7 @@ class MappingLookup:
 mi = MappingLookup()
 
 with psycopg2.connect(DB_CONNECT) as conn:
-    with parallel_backend('threading', n_jobs=MAX_THREADS):
+    with parallel_backend("loky", n_jobs=MAX_THREADS):
         mi.create_indexes(conn)
     while True:
         query = input("artist,recording>")
