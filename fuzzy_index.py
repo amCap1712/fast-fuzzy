@@ -9,6 +9,7 @@ from queue import Queue
 import re
 
 import psycopg2
+from joblib import parallel_backend
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 from unidecode import unidecode
@@ -213,7 +214,8 @@ class MappingLookup:
 mi = MappingLookup()
 
 with psycopg2.connect(DB_CONNECT) as conn:
-    mi.create_indexes(conn)
+    with parallel_backend('threading', n_jobs=MAX_THREADS):
+        mi.create_indexes(conn)
     while True:
         query = input("artist,recording>")
         if not query:
